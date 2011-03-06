@@ -149,6 +149,29 @@ module MiniMagick
       false
     end
 
+    # The image metadata as a hash
+    # supported keys:
+    # - "format"
+    # - "height"
+    # - "width"
+    # - "colorspace"
+    # - "dimensions"
+    # No EXIF values will be present, use [] for that.
+
+    def metadata
+      @metadata ||= begin 
+        colorspace, format, height, width = run_command("identify", "-format", format_option("%r %m %h %w"), escaped_path).split("\n")[0].split(" ");
+        width,height = width.to_i(10), height.to_i(10)
+        { 
+          "colorspace" => colorspace, 
+          "format" => format,
+          "height" => height, 
+          "width" => width,
+          "dimensions" => [width,height]
+        }
+      end
+    end
+
     # A rather low-level way to interact with the "identify" command. No nice API here, just
     # the crazy stuff you find in ImageMagick. See the examples listed!
     #
@@ -165,19 +188,12 @@ module MiniMagick
     # @param format [String] A format for the "identify" command
     # @see For reference see http://www.imagemagick.org/script/command-line-options.php#format
     # @return [String, Numeric, Array, Time, Object] Depends on the method called! Defaults to String for unknown commands
+
     def [](value)
       # Why do I go to the trouble of putting in newlines? Because otherwise animated gifs screw everything up
       case value.to_s
-      when "colorspace"
-        run_command("identify", "-format", format_option("%r"), escaped_path).split("\n")[0]
-      when "format"
-        run_command("identify", "-format", format_option("%m"), escaped_path).split("\n")[0]
-      when "height"
-        run_command("identify", "-format", format_option("%h"), escaped_path).split("\n")[0].to_i
-      when "width"
-        run_command("identify", "-format", format_option("%w"), escaped_path).split("\n")[0].to_i
-      when "dimensions"
-        run_command("identify", "-format", format_option("%w %h"), escaped_path).split("\n")[0].split.map{|v|v.to_i}
+      when "colorspace", "format", "height", "width", "dimensions"
+        metadata[value.to_s]
       when "size"
         File.size(@path) # Do this because calling identify -format "%b" on an animated gif fails!
       when "original_at"
@@ -338,8 +354,8 @@ module MiniMagick
     end
 
     def run(command_builder)
+      @metadata = nil
       command = command_builder.command
-
       sub = Subexec.run(command, :timeout => MiniMagick.timeout)
 
       if sub.exitstatus != 0
